@@ -1,0 +1,197 @@
+# coding: utf-8
+
+import threading
+from settings import logger
+import datetime
+import pytz
+import json
+from ctp.futures import ApiStruct
+import exceptions
+import pymongo as pm
+from pymongo import database
+
+
+class DateTimeEncoder(json.JSONEncoder):
+    def default(self, o):
+        if isinstance(o, datetime.datetime):
+            return o.strftime('%Y-%m-%d %H:%M:%S.%f')
+        else:
+            return json.JSONEncoder.default(self, o)
+
+
+class Base(object):
+    def __init__(self, *args, **kwargs):
+        self.created_at = datetime.datetime.now(tz=pytz.timezone('Asia/Shanghai'))
+
+    def to_json(self):
+        return json.dumps(self.__dict__, cls=DateTimeEncoder)
+
+
+class TickData(Base):
+    collection_name = 'tick'
+
+    def __init__(self, market_data=None, *args, **kwargs):
+        if not isinstance(market_data, ApiStruct.DepthMarketData):
+            for k in kwargs:
+                self.__setattr__(k, kwargs[k])
+        else:
+            super(TickData, self).__init__()
+            self.last_price = market_data.LastPrice
+            self.update_time = market_data.UpdateTime
+            self.update_milli_sec = market_data.UpdateMillisec
+            self.trading_day = market_data.TradingDay
+            self.action_day = market_data.ActionDay
+            self.instrument_id = market_data.InstrumentID
+            self.timestamp = self._format_date(self.action_day, self.update_time, self.update_milli_sec)
+
+    def _format_date(self, trading_day, update_time, milli_sec):
+        date_str = '{} {}.{}'.format(trading_day, update_time, milli_sec)
+        return datetime.datetime.strptime(date_str, '%Y%m%d %H:%M:%S.%f')
+
+    def save_to_db(self, db):
+        if not isinstance(db, database.Database):
+            raise exceptions.InvalidSource
+        duplicate = db[self.__class__.collection_name].find_one({'instrument_id': self.instrument_id,
+                                         'timestamp': self.timestamp})
+        # duplicate = db[self.instrument_id].find_one({'timestamp': self.timestamp})
+        if duplicate:
+            return
+        db[self.__class__.collection_name].save(self.__dict__)
+
+    def async_save_to_db(self, db):
+        if not isinstance(db, database.Database):
+            raise exceptions.InvalidSource
+        th = threading.Thread(target=self.save_to_db, args=(db,))
+        th.daemon = True
+        th.start()
+
+    @classmethod
+    def get_by_timestamp(cls, db, instrument_id, start, end):
+        docs = db[cls.collection_name].find({
+            'timestamp': {
+                '$gte': start,
+                '$lte': end
+            },
+            'instrument_id': instrument_id
+        })
+        if not docs:
+            return []
+        return [cls(**doc) for doc in docs]
+
+    @classmethod
+    def latest(cls, db, instrument_id):
+        docs = db[cls.collection_name].find({'instrument_id': instrument_id}).sort('timestamp', -1).limit(1)
+        return cls(**docs[0]) if docs else None
+
+
+class RtnOrder(Base):
+    collection_name = 'rtn_order'
+
+    def __init__(self, order, *args, **kwargs):
+        if not isinstance(order, ApiStruct.Order):
+            for k in kwargs:
+                self.__setattr__(k, kwargs[k])
+        else:
+            super(RtnOrder, self).__init__()
+            self.broker_id = order.BrokerID
+            self.investor_id = order.InvestorID
+            self.instrument_id = order.InstrumentID
+            self.order_ref = order.OrderRef
+            self.user_id = order.UserID
+            self.order_price_type = order.OrderPriceType
+            self.direction = order.Direction
+            self.comb_offset_flag = order.CombOffsetFlag
+            self.comb_hedge_flag = order.CombHedgeFlag
+            self.limit_price = order.LimitPrice
+            self.volume_total_original = order.VolumeTotalOriginal
+            self.time_condition = order.TimeCondition
+            self.gtd_date = order.GTDDate
+            self.volume_condition = order.VolumeCondition
+
+
+
+
+class FixedArray(list):
+    def __init__(self, n):
+        super(FixedArray, self).__init__()
+        self.size = n
+        self.lock = threading.RLock()
+
+    def __len__(self):
+        with self.lock:
+            return super(FixedArray, self).__len__()
+    
+    def __getitem__(self, idx):
+        with self.lock:
+            try:
+                return super(FixedArray, self).__getitem__(idx)
+            except IndexError:
+                return None
+    
+    def __setitem__(self, idx, value):
+        with self.lock:
+            if self.__len__() >= self.size:
+                self.pop(0)
+            return super(FixedArray, self).__setitem__(idx, value)
+
+    def __delitem__(self, idx):
+        with self.lock:
+            return super(FixedArray, self).__delitem__(idx)
+
+    def __contains__(self, item):
+        with self.lock:
+            return super(FixedArray, self).__contains__(item)
+    
+    def append(self, item):
+        with self.lock:
+            if self.__len__() >= self.size:
+                self.pop(0)
+            return super(FixedArray, self).append(item)
+
+    def pop(self, idx):
+        with self.lock:
+            return super(FixedArray, self).pop(idx)
+
+
+class ObserveStatus(object):
+    def __init__(self, ini_status):
+        self._status = ini_status
+        self._observers = [] # callbacks
+        self.status_garbage = FixedArray(10) # store last 10 abandoned status
+
+    @property
+    def status(self):
+        return self._status
+
+    def last_status(self, idx):
+        n = len(self.status_garbage)
+        if n <= 0:
+            return ''
+        try:
+            return self.status_garbage[n - idx - 1]
+        except IndexError:
+            return ''
+    
+    @status.setter
+    def status(self, value):
+        if self._status == value:
+            # no change
+            return
+        self.status_garbage.append(self._status) # store garbage status
+        last = self._status
+        self._status = value
+        for func, kwargs in self._observers:
+            func(value, last, **kwargs)
+    
+    def register_event(self, func, kwargs):
+        # kwargs is a dict parameters
+        self._observers.append((func, kwargs))
+        return self
+
+
+def on_status_change(new_val, old_val):
+    print new_val, old_val
+
+if __name__ == '__main__':
+    a = TickData('1', 1.9, '20180528', '00:01:01', 500)
+    print a.timestamp
