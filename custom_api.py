@@ -68,7 +68,7 @@ class MyMdApi(MdApi):
         models.TickData(pDepthMarketData).async_save_to_db(db)
         if self.strategy:
             self.strategy.on_tick(pDepthMarketData)
-        # logger.info('{}: {}'.format(pDepthMarketData.InstrumentID, pDepthMarketData.LastPrice))
+            # logger.info('{}: {}'.format(pDepthMarketData.InstrumentID, pDepthMarketData.LastPrice))
 
 
 class CustomTdApi(TraderApi):
@@ -154,7 +154,7 @@ class CustomTdApi(TraderApi):
 
     def OnRspQryInvestorPosition(self, pInvestorPosition, pRspInfo, nRequestID, bIsLast):
         if self.api_type == 'close_all':
-            logger.info('{}'.format(pInvestorPosition))
+            logger.info('isLast={}, {}'.format(bIsLast, pInvestorPosition))
             if pInvestorPosition.Position > 0 and not pInvestorPosition.LongFrozen and not pInvestorPosition.ShortFrozen:
                 # 持仓且没有未成交
                 close_order = ApiStruct.InputOrder(
@@ -176,8 +176,9 @@ class CustomTdApi(TraderApi):
                 self.requestID += 1
                 self.ReqOrderInsert(close_order, self.requestID)
                 logger.info(
-                    'Close remaining orders, instrument: {}, requestID={}'.format(pInvestorPosition.InstrumentID,
-                                                                                  self.requestID))
+                    'Close remaining orders, instrument: {}, requestID={}'.format(
+                        pInvestorPosition.InstrumentID,
+                        self.requestID))
 
     def OnRspQryInvestorPositionDetail(self, pInvestorPositionDetail, pRspInfo, nRequestID, bIsLast):
         if self.api_type == 'close_all':
@@ -202,12 +203,11 @@ class CustomTdApi(TraderApi):
             logger.info(
                 'Close remaining orders, instrument: {}, requestID={}'.format(pInvestorPositionDetail.InstrumentID,
                                                                               self.requestID))
-        # logger.info('Position: {}'.format(pInvestorPositionDetail))
+            # logger.info('Position: {}'.format(pInvestorPositionDetail))
 
     def OnRtnOrder(self, pOrder):
         if not self.strategy:
-            attrs = [i for i in dir(pOrder) if not callable(i) and not i.startswith('_')]
-            logger.info(u'OnRtnOrder: {} '.format(attrs))
+            logger.info(u'OnRtnOrder: {} '.format(pOrder))
             return
         self.strategy.on_rtn_order(pOrder)
         # logger.info(u'{}: Opening..., direction:{}， offset:{} '.format(pOrder.InstrumentID, pOrder.Direction, pOrder.CombOffsetFlag))

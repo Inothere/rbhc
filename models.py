@@ -5,6 +5,7 @@ from settings import logger
 import datetime
 import pytz
 import json
+import re
 from ctp.futures import ApiStruct
 import exceptions
 import pymongo as pm
@@ -25,6 +26,22 @@ class Base(object):
 
     def to_json(self):
         return json.dumps(self.__dict__, cls=DateTimeEncoder)
+
+    @classmethod
+    def to_underline(cls, text):
+        """
+
+        :param text: str
+        :return: str
+        """
+        result = []
+        for ch in text:
+            if ch.isupper():
+                result.append('_')
+                result.append(ch.lower())
+            else:
+                result.append(ch)
+        return ''.join(result)
 
 
 class TickData(Base):
@@ -85,6 +102,9 @@ class TickData(Base):
 
 
 class RtnOrder(Base):
+    """
+    InstrumentID, InvestorID, UserID, ExchangeID
+    """
     collection_name = 'rtn_order'
 
     def __init__(self, order, *args, **kwargs):
@@ -93,22 +113,10 @@ class RtnOrder(Base):
                 self.__setattr__(k, kwargs[k])
         else:
             super(RtnOrder, self).__init__()
-            self.broker_id = order.BrokerID
-            self.investor_id = order.InvestorID
-            self.instrument_id = order.InstrumentID
-            self.order_ref = order.OrderRef
-            self.user_id = order.UserID
-            self.order_price_type = order.OrderPriceType
-            self.direction = order.Direction
-            self.comb_offset_flag = order.CombOffsetFlag
-            self.comb_hedge_flag = order.CombHedgeFlag
-            self.limit_price = order.LimitPrice
-            self.volume_total_original = order.VolumeTotalOriginal
-            self.time_condition = order.TimeCondition
-            self.gtd_date = order.GTDDate
-            self.volume_condition = order.VolumeCondition
-
-
+            for attr in dir(order):
+                if not callable(attr) and not attr.startswith('_'):
+                    m_attr = self.__class__.to_underline(attr)
+                    self.__setattr__(m_attr, order.__getattribute__(attr))
 
 
 class FixedArray(list):
