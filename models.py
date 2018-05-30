@@ -128,14 +128,14 @@ class FixedArray(list):
     def __len__(self):
         with self.lock:
             return super(FixedArray, self).__len__()
-    
+
     def __getitem__(self, idx):
         with self.lock:
             try:
                 return super(FixedArray, self).__getitem__(idx)
             except IndexError:
                 return None
-    
+
     def __setitem__(self, idx, value):
         with self.lock:
             if self.__len__() >= self.size:
@@ -149,7 +149,7 @@ class FixedArray(list):
     def __contains__(self, item):
         with self.lock:
             return super(FixedArray, self).__contains__(item)
-    
+
     def append(self, item):
         with self.lock:
             if self.__len__() >= self.size:
@@ -159,6 +159,24 @@ class FixedArray(list):
     def pop(self, idx):
         with self.lock:
             return super(FixedArray, self).pop(idx)
+
+
+class ReqRspPair(object):
+    def __init__(self, request_id):
+        """
+
+        :param request_id: int
+        """
+        self.request_id = request_id
+        self.in_order = None
+        self.rtn_orders = []
+
+    def __eq__(self, other):
+        if isinstance(other, int):
+            return self.request_id == other
+        if isinstance(other, ReqRspPair):
+            return self.request_id == other.request_id
+        return False
 
 
 class ObserveStatus(object):

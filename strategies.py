@@ -1,7 +1,7 @@
 # coding: utf-8
 from ctp.futures import ApiStruct
 from settings import logger, db
-from models import FixedArray, ObserveStatus, TickData
+from models import ObserveStatus, TickData
 import sched, time, datetime
 import threading
 import Queue
@@ -174,6 +174,7 @@ class RbhcStrategy(object):
                 self.status[order.InstrumentID].status = 'Closing'
                 logger.info(u'{}: 平仓请求已接受，请等待结果'.format(order.InstrumentID))
             logger.info(u'OnRtnOrder, {}'.format(order))
+
     def _do_after_seconds(self, sec, func, vals):
         def _do():
             time.sleep(sec)
@@ -230,18 +231,19 @@ class RbhcStrategy(object):
         # SendingOpening -> Opening, 3s后撤单
         # SendingClosing -> Closing 3s后撤单
         # Canceling -> None 立刻发单
-        id = kwargs.get('id')
-        logger.debug('{}: {} new status is {}'.format('on_status_change', id, new_status))
-        if new_status == 'SendingOpening':
-            self._do_after_seconds(3, self.cancel, (id,))
-        elif new_status == 'SendingClosing':
-            self._do_after_seconds(3, self.cancel, (id,))
-        elif new_status == 'None' and old_status == 'Canceling':
-            if not self.last_order_info[id]:
-                return
-            self._order_insert(
-                id=id,
-                direction=self.last_order_info[id].Direction,  # 采用上一次发单方向
-                offset_flag=self.last_order_info[id].CombOffsetFlag[0],  # 采用上一次开平选项
-                price=TickData.latest(db, id).last_price
-            )
+        # id = kwargs.get('id')
+        # logger.debug('{}: {} new status is {}'.format('on_status_change', id, new_status))
+        # if new_status == 'SendingOpening':
+        #     self._do_after_seconds(3, self.cancel, (id,))
+        # elif new_status == 'SendingClosing':
+        #     self._do_after_seconds(3, self.cancel, (id,))
+        # elif new_status == 'None' and old_status == 'Canceling':
+        #     if not self.last_order_info[id]:
+        #         return
+        #     self._order_insert(
+        #         id=id,
+        #         direction=self.last_order_info[id].Direction,  # 采用上一次发单方向
+        #         offset_flag=self.last_order_info[id].CombOffsetFlag[0],  # 采用上一次开平选项
+        #         price=TickData.latest(db, id).last_price
+        #     )
+        pass
