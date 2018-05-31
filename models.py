@@ -97,26 +97,21 @@ class TickData(Base):
 
     @classmethod
     def latest(cls, db, instrument_id):
-        docs = db[cls.collection_name].find({'instrument_id': instrument_id}).sort('timestamp', -1).limit(1)
-        return cls(**docs[0]) if docs else None
+        from bson.errors import InvalidDocument
+        try:
+            docs = db[cls.collection_name].find({'instrument_id': instrument_id}).sort('timestamp', -1).limit(1)
+            return cls(**docs[0]) if docs else None
+        except InvalidDocument:
+            logger.error('Dirty data, {}'.format(docs))
+            return None
 
 
-class RtnOrder(Base):
-    """
-    InstrumentID, InvestorID, UserID, ExchangeID
-    """
-    collection_name = 'rtn_order'
-
-    def __init__(self, order, *args, **kwargs):
-        if not isinstance(order, ApiStruct.Order):
-            for k in kwargs:
-                self.__setattr__(k, kwargs[k])
-        else:
-            super(RtnOrder, self).__init__()
-            for attr in dir(order):
-                if not callable(attr) and not attr.startswith('_'):
-                    m_attr = self.__class__.to_underline(attr)
-                    self.__setattr__(m_attr, order.__getattribute__(attr))
+class BaseOrder(Base):
+    def __init__(self, order):
+        super(BaseOrder, self).__init__()
+        for attr in dir(order):
+            if not callable(attr) and not attr.startswith('_'):
+                self.__setattr__(attr, order.__getattribute__(attr))
 
 
 class FixedArray(list):

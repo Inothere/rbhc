@@ -1,7 +1,7 @@
 # coding: utf-8
 from ctp.futures import ApiStruct
 from settings import logger, db
-from models import ObserveStatus, TickData
+from models import ObserveStatus, TickData, BaseOrder
 import time, datetime
 import threading
 
@@ -35,13 +35,14 @@ class RbhcStrategy(object):
             self.rb: 0.0,
             self.hc: 0.0
         }
-
-        self.status_lock = threading.RLock()
+        self.open_type = '10'
+        self.ref_lock = threading.RLock()
         self.process_th = None
         self.cancel_th = None
 
     def inc_order_ref(self, id):
-        self.order_refs[id] = '{0:13d}'.format(int(self.order_refs[id]) + 1)
+        with self.ref_lock:
+            self.order_refs[id] = '{0:13d}'.format(int(self.order_refs[id]) + 1)
 
     def register_trader(self, td_api):
         self.td_api = td_api
@@ -51,16 +52,20 @@ class RbhcStrategy(object):
         self.process_th = threading.Thread(target=self._worker)
         self.process_th.daemon = True
         self.process_th.start()
-        logger.info(u'开启策略...')
+        logger.info(u'开启策略..., session_id: {}, front_id: {}'.format(self.session_id, self.front_id))
 
     def _worker(self):
         while True:
-            time.sleep(1)
+            time.sleep(15)
             cur = datetime.datetime.now()
-            if cur.second != 59:
-                continue
+            # if cur.second != 59:
+            #     continue
             logger.info(u'一分钟到达，计算增长率')
             self.calc_rate()
+            rb_order = self.last_resp_info[self.rb].__dict__ if self.last_resp_info[self.rb] else None
+            hc_order = self.last_resp_info[self.hc].__dict__ if self.last_resp_info[self.hc] else None
+            logger.debug('rb last resp: {}'.format(rb_order))
+            logger.debug('hc last resp: {}'.format(hc_order))
             if self.can_open(self.rb) and self.can_open(self.hc):
                 # 未持仓，开仓
                 self.open_all()
@@ -89,7 +94,7 @@ class RbhcStrategy(object):
         return self.status[id].status == 'Traded' and self.last_resp_info[id].CombOffsetFlag == ApiStruct.OF_Open
 
     def open_all(self):
-        # self.open_type = '10' if self.rate[self.rb] > self.rate[self.hc] else '01'
+        self.open_type = '10' if self.rate[self.rb] > self.rate[self.hc] else '01'
         logger.info('Open all')
         # rb order
         self._order_insert(
@@ -107,6 +112,9 @@ class RbhcStrategy(object):
         )
 
     def close_all(self):
+        if (self.open_type == '10' and self.rate[self.rb] > self.rate[self.hc]) or \
+                (self.open_type == '01' and self.rate[self.rb] < self.rate[self.hc]):
+            logger.info('Pass...')
         logger.info('Close all')
         last_direction = self.last_resp_info[self.rb].Direction
         self._order_insert(
@@ -147,6 +155,9 @@ class RbhcStrategy(object):
         if rsp.ErrorID != 0:
             # 撤单请求失败
             logger.error(u'{}: 撤单请求失败, 原因: {}'.format(action.InstrumentID, rsp.ErrorMsg.decode('gb2312')))
+            if action.InstrumentID:
+                logger.info(u'撤单请求失败，status={}, order_ref={}'.format(self.last_resp_info[action.InstrumentID].OrderStatus,
+                                        self.last_resp_info[action.InstrumentID].OrderRef))
         else:
             logger.info(u'{}: 撤单请求已接受，请等待结果'.format(action.InstrumentID))
 
@@ -168,16 +179,22 @@ class RbhcStrategy(object):
 
     def on_rtn_order(self, order):
         if self.is_my_order(order):
-            self.last_resp_info[order.InstrumentID] = order
+            logger.info('OnRtnOrder: id={}, OrderRef={}, OrderStatus={}'.format(order.InstrumentID, order.OrderRef,
+                                                                                order.OrderStatus))
+            self.last_resp_info[order.InstrumentID] = BaseOrder(order)
             self.status[order.InstrumentID].status = 'Processing'
             if order.OrderStatus == ApiStruct.OST_Unknown:
                 # 请求到达交易所，开启撤单线程
-                self._do_after_seconds(3, self.cancel, (order.InstrumentID,))
+                logger.info(
+                    'OnRtnOrder, Unknown: id={}, OrderRef={}, OrderStatus={}'.format(order.InstrumentID, order.OrderRef,
+                                                                                     order.OrderStatus))
+                self._do_after_seconds(3, self.cancel, (BaseOrder(order),))
             elif order.OrderStatus == ApiStruct.OST_AllTraded:
                 # 全部成交
                 self.status[order.InstrumentID].status = 'Traded'
             elif order.OrderStatus == ApiStruct.OST_Canceled:
                 # 撤单成功
+                logger.info('Canceled, {}'.format(order))
                 self.status[order.InstrumentID].status = 'Canceled'
                 # 立刻重新发单
                 self._order_insert(
@@ -189,6 +206,7 @@ class RbhcStrategy(object):
 
     def _do_after_seconds(self, sec, func, vals):
         def _do():
+            logger.info('Cancel thread started..., vals={}'.format(vals))
             time.sleep(sec)
             func(*vals)
 
@@ -203,8 +221,7 @@ class RbhcStrategy(object):
         :return: bool
         """
         return order.InstrumentID in [self.rb, self.hc] and order.SessionID == self.session_id \
-               and order.FrontID == self.front_id and \
-               self.last_order_info[order.InstrumentID].OrderRef == order.OrderRef
+               and order.FrontID == self.front_id
 
     def _order_insert(self, *args, **kwargs):
         '''
@@ -232,17 +249,30 @@ class RbhcStrategy(object):
         self.td_api.requestID += 1
         self.td_api.ReqOrderInsert(order, self.td_api.requestID)
         # 保存本次input order信息，以便重新发单
-        self.last_order_info[kwargs.get('id')] = order
+        self.last_order_info[kwargs.get('id')] = BaseOrder(order)
 
-    def cancel(self, id):
-        logger.info('Cancel {}, order_ref is {}'.format(id, self.order_refs[id]))
+    def cancel(self, order):
+        """
+
+        :param order: BaseOrder
+        :return:
+        """
+        id = order.InstrumentID
+        if self.status[id].status == 'Traded':
+            logger.info('Traded, do not need cancel')
+            return
+        logger.info(
+            'Canceling,id={}, order_ref={}, session_id={}, front_id={}'.format(id, order.OrderRef, order.SessionID,
+                                                                               order.FrontID))
+        logger.info('last_resp: status={}, order_ref={}'.format(self.last_resp_info[id].OrderStatus,
+                                                                self.last_resp_info[id].OrderRef))
         order_action = ApiStruct.OrderAction(
             InstrumentID=id,
             BrokerID=self.td_api.brokerID,
             InvestorID=self.td_api.userID,
-            OrderRef=self.order_refs[id],
-            SessionID=self.session_id,
-            FrontID=self.front_id,
+            OrderRef=order.OrderRef,
+            SessionID=order.SessionID,
+            FrontID=order.FrontID,
             ActionFlag=ApiStruct.AF_Delete
         )
         self.td_api.requestID += 1
