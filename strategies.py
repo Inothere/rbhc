@@ -2,10 +2,8 @@
 from ctp.futures import ApiStruct
 from settings import logger, db
 from models import ObserveStatus, TickData
-import sched, time, datetime
+import time, datetime
 import threading
-import Queue
-import json
 
 
 class RbhcStrategy(object):
@@ -63,13 +61,12 @@ class RbhcStrategy(object):
                 continue
             logger.info(u'一分钟到达，计算增长率')
             self.calc_rate()
-            with self.status_lock:
-                if self.can_open(self.rb) and self.can_open(self.hc):
-                    # 未持仓，开仓
-                    self.open_all()
-                elif self.can_close(self.rb) or self.can_close(self.hc):
-                    # 持仓中，平仓
-                    self.close_all()
+            if self.can_open(self.rb) and self.can_open(self.hc):
+                # 未持仓，开仓
+                self.open_all()
+            elif self.can_close(self.rb) or self.can_close(self.hc):
+                # 持仓中，平仓
+                self.close_all()
 
     def calc_rate(self, seconds=59):
         close_time = datetime.datetime.now()
