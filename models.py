@@ -183,11 +183,13 @@ class ObserveStatus(object):
     def __init__(self, ini_status):
         self._status = ini_status
         self._observers = [] # callbacks
+        self.lock = threading.RLock()
         self.status_garbage = FixedArray(10) # store last 10 abandoned status
 
     @property
     def status(self):
-        return self._status
+        with self.lock:
+            return self._status
 
     def last_status(self, idx):
         n = len(self.status_garbage)
@@ -200,12 +202,13 @@ class ObserveStatus(object):
     
     @status.setter
     def status(self, value):
-        if self._status == value:
-            # no change
-            return
-        self.status_garbage.append(self._status) # store garbage status
-        last = self._status
-        self._status = value
+        with self.lock:
+            if self._status == value:
+                # no change
+                return
+            self.status_garbage.append(self._status) # store garbage status
+            last = self._status
+            self._status = value
         for func, kwargs in self._observers:
             func(value, last, **kwargs)
     
