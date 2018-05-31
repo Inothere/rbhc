@@ -125,6 +125,8 @@ class CustomTdApi(TraderApi):
             return
         self.strategy.session_id = pRspUserLogin.SessionID
         self.strategy.front_id = pRspUserLogin.FrontID
+        for k in self.strategy.order_refs:
+            self.strategy.order_refs[k] = pRspUserLogin.MaxOrderRef
 
     def OnRspSettlementInfoConfirm(self, pSettlementInfoConfirm, pRspInfo, nRequestID, bIsLast):
         # for id in self.instrumentIDs:
@@ -135,8 +137,8 @@ class CustomTdApi(TraderApi):
         #     )
         #     self.requestID += 1
         #     self.ReqQryInvestorPositionDetail(qry_position, self.requestID)
-        self.login_flag.set()
         logger.info('Settlement: {}'.format(pSettlementInfoConfirm))
+        self.login_flag.set()
 
     def OnRspOrderInsert(self, pInputOrder, pRspInfo, nRequestID, bIsLast):
         if not self.strategy:
@@ -153,6 +155,9 @@ class CustomTdApi(TraderApi):
         self.strategy.on_rsp_order_action(pInputOrderAction, pRspInfo, nRequestID, bIsLast)
 
     def OnRspQryInvestorPosition(self, pInvestorPosition, pRspInfo, nRequestID, bIsLast):
+        if not pInvestorPosition:
+            # 返回None，表示没有任何持仓
+            return
         if self.api_type == 'close_all':
             logger.info('isLast={}, {}'.format(bIsLast, pInvestorPosition))
             if pInvestorPosition.Position > 0 and not pInvestorPosition.LongFrozen and not pInvestorPosition.ShortFrozen:
@@ -181,6 +186,8 @@ class CustomTdApi(TraderApi):
                         self.requestID))
 
     def OnRspQryInvestorPositionDetail(self, pInvestorPositionDetail, pRspInfo, nRequestID, bIsLast):
+        if not pInvestorPositionDetail:
+            return
         if self.api_type == 'close_all':
             close_order = ApiStruct.InputOrder(
                 BrokerID=self.brokerID,

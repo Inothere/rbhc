@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import time
-from event_engine import EventEngine
+import threading
 from strategies import RbhcStrategy
 from custom_api import CustomTdApi
 import settings

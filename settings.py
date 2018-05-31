@@ -1,7 +1,10 @@
 import logging
 import pymongo as pm
 from event_engine import EventEngine
+import threading
 import re
+from ctp.futures import ApiStruct
+from Queue import Queue
 
 logger = logging.getLogger('rbhc')
 logger.setLevel(logging.DEBUG)
@@ -23,7 +26,7 @@ event_handlers = [{
     'func': 'test.on_tick'
 }]
 
-order_maps = list()   # order manager
+orders = Queue()  # order manager
 main_engine = EventEngine()
 
 
@@ -45,4 +48,7 @@ def register_all_handlers(ee, handlers):
         except ImportError:
             pass
 
+
 register_all_handlers(main_engine, event_handlers)
+
+

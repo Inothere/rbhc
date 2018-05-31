@@ -2,7 +2,7 @@
 from event_engine import Event
 from ctp.futures import ApiStruct
 import models
-from settings import db, order_maps
+from settings import db
 
 
 def on_tick(e):
@@ -19,5 +19,4 @@ def on_rtn_order(e):
     order = e.dict_.get('order')
     if not isinstance(order, ApiStruct.Order):
         return
-    order_maps.append(order)
 
