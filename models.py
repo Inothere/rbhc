@@ -68,11 +68,10 @@ class TickData(Base):
     def save_to_db(self, db):
         if not isinstance(db, database.Database):
             raise exceptions.InvalidSource
-        duplicate = db[self.__class__.collection_name].find_one({'instrument_id': self.instrument_id,
-                                         'timestamp': self.timestamp})
-        # duplicate = db[self.instrument_id].find_one({'timestamp': self.timestamp})
-        if duplicate:
-            return
+        # duplicate = db[self.__class__.collection_name].find_one({'instrument_id': self.instrument_id,
+        #                                  'timestamp': self.timestamp})
+        # if duplicate:
+        #     return
         db[self.__class__.collection_name].save(self.__dict__)
 
     def async_save_to_db(self, db):
