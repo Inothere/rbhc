@@ -4,6 +4,7 @@ from settings import logger, db
 from models import ObserveStatus, TickData, BaseOrder, Position
 import time, datetime
 import threading
+from copy import deepcopy
 
 
 class RbhcStrategy(object):
@@ -97,7 +98,7 @@ class RbhcStrategy(object):
                 # 启动强平线程
                 if not self.force_closing:
                     self.force_closing = True
-                    self._do_after_seconds(1, self.close_all, ())
+                    self._do_after_seconds(1, self._force_close, ())
                 continue
             else:
                 self.force_closing = False
@@ -146,6 +147,18 @@ class RbhcStrategy(object):
                 self.td_api.requestID += 1
                 self.td_api.ReqQryInvestorPosition(qry_position, self.td_api.requestID)
 
+    def _force_close(self):
+        self.position_ev[self.rb].wait()
+        rb_positions = deepcopy(self.positions[self.hc])
+        self.position_ev[self.hc].wait()
+        hc_positions = deepcopy(self.positions[self.hc])
+        for position in rb_positions + hc_positions:
+            # 获取平今和平昨报单
+            input_orders = position.close_orders_for_limited_price(db)
+            for order in input_orders:
+                self.td_api.ReqOrderInsert(order)
+
+
     def calc_type(self, gap=1e-5):
         if self.rate[self.rb] - self.rate[self.hc] > gap:
             return '10'
@@ -164,26 +177,6 @@ class RbhcStrategy(object):
         self.rate[self.rb] = (rb_data[-1].last_price - rb_data[0].last_price) / rb_data[0].last_price
         self.rate[self.hc] = (hc_data[-1].last_price - hc_data[0].last_price) / hc_data[0].last_price
         return True
-
-    def close_all(self):
-        # -------------处理rb报单-----------------------
-        if self.status[self.rb].status == 'Traded' and \
-                self.last_resp_info[self.rb].CombOffsetFlag == ApiStruct.OF_Open:
-            # rb持仓中，必须强平
-            self._close(self.rb, ApiStruct.D_Buy if self.last_open_type[self.rb] == '10' else ApiStruct.D_Sell)
-        elif self.status[self.rb].status == 'Processing' and \
-                self.last_resp_info[self.rb].CombOffsetFlag == ApiStruct.OF_Open:
-            # rb开仓中，撤单
-            self.cancel(self.last_resp_info[self.rb])
-        # -------------处理hc报单-----------------------
-        if self.status[self.hc].status == 'Traded' and \
-                self.last_resp_info[self.hc].CombOffsetFlag == ApiStruct.OF_Open:
-            # hc持仓中，必须强平
-            self._close(self.hc, ApiStruct.D_Sell if self.last_open_type[self.rb] == '10' else ApiStruct.D_Buy)
-        elif self.status[self.hc].status == 'Processing' and \
-                self.last_resp_info[self.hc].CombOffsetFlag == ApiStruct.OF_Open:
-            # hc 开仓中，撤单
-            self.cancel(self.last_resp_info[self.hc])
 
     def date_of_end(self):
         b_ret = False
