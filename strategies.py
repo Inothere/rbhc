@@ -160,12 +160,12 @@ class RbhcStrategy(object):
                 self.td_api.requestID += 1
                 self.td_api.ReqOrderInsert(order, self.td_api.requestID)
 
-    def calc_type(self, gap=1e-5):
+    def calc_type(self, gap=1e-6):
         if self.rate[self.rb] - self.rate[self.hc] > gap:
             return '10'
         if self.rate[self.rb] - self.rate[self.hc] < -gap:
             return '01'
-        return '00'
+        return '01'
 
     def calc_rate(self, seconds=59):
         close_time = datetime.datetime.now()
@@ -309,7 +309,10 @@ class RbhcStrategy(object):
                     if not self.canceling[order.InstrumentID]:
                         # 没有其他撤单线程存在，开启撤单线程
                         self.canceling[order.InstrumentID] = True
-                        self._do_after_seconds(10, self.cancel, (BaseOrder(order),))
+                        if order.CombOffsetFlag == ApiStruct.OF_Open:
+                            self._do_after_seconds(10, self.cancel, (BaseOrder(order),))
+                        else:
+                            self._do_after_seconds(3, self.cancel, (BaseOrder(order), ))
             elif order.OrderStatus == ApiStruct.OST_AllTraded:
                 # 全部成交
                 self.status[order.InstrumentID].status = 'Traded'
@@ -317,8 +320,8 @@ class RbhcStrategy(object):
                 # 撤单成功
                 logger.info('Canceled, {}'.format(order))
                 self.status[order.InstrumentID].status = 'Canceled'
-                if self.force_closing and order.CombOffsetFlag != ApiStruct.OF_Open:
-                    logger.info(u'{}: 强平中, 重新发平仓单'.format(order.InstrumentID))
+                if order.CombOffsetFlag != ApiStruct.OF_Open:
+                    logger.info(u'{}: 平仓单被撤销, 重新发平仓单'.format(order.InstrumentID))
                     self._close(order.InstrumentID, self.last_resp_info[order.InstrumentID].Direction)
 
     def _do_after_seconds(self, sec, func, vals):
