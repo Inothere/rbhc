@@ -167,10 +167,10 @@ class RbhcStrategy(object):
             '{}-{:0>2}-{:0>2} {}'.format(cur.year, cur.month, cur.day, h),
             self.fmt
         ) for h in self.night_interval]
-        if cur - m_day_interval[1] < datetime.timedelta(minutes=5) and cur > m_day_interval[0]:
+        if m_day_interval[1] - cur < datetime.timedelta(minutes=5) and cur > m_day_interval[0]:
             # 日盘即将收盘
             b_ret = True
-        elif cur - m_night_interval[1] < datetime.timedelta(minutes=5) and cur > m_night_interval[0]:
+        elif m_night_interval[1] - cur < datetime.timedelta(minutes=5) and cur > m_night_interval[0]:
             # 夜盘即将收盘
             b_ret = True
         return b_ret
@@ -178,23 +178,25 @@ class RbhcStrategy(object):
     def can_open(self, id):
         # 增长率相等，不能开仓
         if self.open_type == '00':
-            logger.info(u'不能开仓，原因：增长率相等')
+            logger.info(u'{}: 不能开仓，原因：增长率相等'.format(id))
             return False
         # 非开仓交易成交，才能继续开仓
         if not self.last_resp_info[id]:
             # 没有任何返回
             return True
-        b_ret = (self.status[id].status == 'Traded' and self.last_resp_info[id].CombOffsetFlag != ApiStruct.OF_Open) \
-                or (self.status[id].status == 'Canceled')
+        b_ret = (self.status[id].status == 'Traded' and
+                 self.last_resp_info[id].CombOffsetFlag != ApiStruct.OF_Open) or \
+                (self.status[id].status == 'Canceled' and
+                 self.last_resp_info[id].CombOffsetFlag == ApiStruct.OF_Open)
         return b_ret
 
     def can_close(self, id):
         # 增长率相等，不能开仓
         if self.open_type == '00':
-            logger.info(u'不能平仓，原因：增长率相等')
+            logger.info(u'{}: 不能平仓，原因：增长率相等'.format(id))
             return False
         if self.open_type == self.last_open_type[id]:
-            logger.info(u'不能平仓，原因：与开仓时符号相同')
+            logger.info(u'{}: 不能平仓，原因：与开仓时符号相同'.format(id))
             return False
         # 开仓交易成交，才能平仓
         return self.status[id].status == 'Traded' and self.last_resp_info[id].CombOffsetFlag == ApiStruct.OF_Open
@@ -274,8 +276,11 @@ class RbhcStrategy(object):
             if order.OrderStatus == ApiStruct.OST_Unknown:
                 # 请求到达交易所，开启撤单线程
                 logger.info(
-                    u'请求到达交易所: id={}, OrderRef={}, OrderStatus={}'.format(order.InstrumentID, order.OrderRef,
-                                                                          order.OrderStatus))
+                    u'请求到达交易所: id={}, OrderRef={}, OrderStatus={}, offset={}'.\
+                        format(order.InstrumentID,
+                               order.OrderRef,
+                               order.OrderStatus,
+                               order.CombOffsetFlag))
                 with self.cancel_lock[order.InstrumentID]:
                     if not self.canceling[order.InstrumentID]:
                         # 没有其他撤单线程存在，开启撤单线程
@@ -337,7 +342,8 @@ class RbhcStrategy(object):
         self.td_api.requestID += 1
         self.td_api.ReqOrderInsert(order, self.td_api.requestID)
         # 保存本次input order信息，以便重新发单
-        logger.info(u'提交委托单，requestID={}, order_ref={}'.format(self.td_api.requestID, order.OrderRef))
+        logger.info(u'提交委托单，requestID={}, order_ref={}, offset={}'.\
+                    format(self.td_api.requestID, order.OrderRef, order.CombOffsetFlag))
         self.last_order_info[kwargs.get('id')] = BaseOrder(order)
 
     def cancel(self, order):
@@ -351,7 +357,7 @@ class RbhcStrategy(object):
         id = order.InstrumentID
         try:
             if self.status[id].status == 'Traded':
-                logger.info('Traded, do not need cancel')
+                logger.info('{}: Traded, do not need cancel, offset={}'.format(id, order.CombOffsetFlag))
                 return
             logger.info(
                 'Canceling,id={}, order_ref={}, session_id={}, front_id={}'.format(id, order.OrderRef, order.SessionID,
