@@ -105,6 +105,68 @@ class TickData(Base):
             return None
 
 
+class Position(Base):
+    def __init__(self, position):
+        """
+
+        :param position: ApiStruct.InvestorPosition
+        """
+        super(Position, self).__init__()
+        self.InstrumentID = position.InstrumentID
+        self.BrokerID = position.BrokerID
+        self.InvestorID = position.InvestorID
+        self.PosiDirection = position.PosiDirection
+        self.HedgeFlag = position.HedgeFlag
+        self.YdPosition = position.YdPosition
+        self.Position = position.Position
+
+    @property
+    def CloseDirection(self):
+        return ApiStruct.D_Sell if self.PosiDirection == ApiStruct.PD_Long else ApiStruct.D_Buy
+
+    @property
+    def IsLong(self):
+        return self.PosiDirection == ApiStruct.PD_Long
+
+    def close_orders_for_limited_price(self, db):
+        orders = list()
+        if self.YdPosition > 0:
+            orders.append(ApiStruct.InputOrder(
+                BrokerID=self.BrokerID,
+                InvestorID=self.InvestorID,
+                InstrumentID=self.InstrumentID,
+                OrderPriceType=ApiStruct.OPT_LimitPrice,
+                Direction=self.CloseDirection,
+                VolumeTotalOriginal=self.YdPosition,
+                TimeCondition=ApiStruct.TC_GFD,
+                VolumeCondition=ApiStruct.VC_AV,
+                CombHedgeFlag=self.HedgeFlag,
+                CombOffsetFlag=ApiStruct.OF_CloseYesterday,
+                LimitPrice=TickData.latest(db, self.InstrumentID).last_price,
+                ForceCloseReason=ApiStruct.FCC_NotForceClose,
+                IsAutoSuspend=False,
+                UserForceClose=False
+            ))
+        if self.Position > 0:
+            orders.append(ApiStruct.InputOrder(
+                BrokerID=self.BrokerID,
+                InvestorID=self.InvestorID,
+                InstrumentID=self.InstrumentID,
+                OrderPriceType=ApiStruct.OPT_LimitPrice,
+                Direction=self.CloseDirection,
+                VolumeTotalOriginal=self.Position,
+                TimeCondition=ApiStruct.TC_GFD,
+                VolumeCondition=ApiStruct.VC_AV,
+                CombHedgeFlag=self.HedgeFlag,
+                CombOffsetFlag=ApiStruct.OF_CloseToday,
+                LimitPrice=TickData.latest(db, self.InstrumentID).last_price,
+                ForceCloseReason=ApiStruct.FCC_NotForceClose,
+                IsAutoSuspend=False,
+                UserForceClose=False
+            ))
+        return orders
+
+
 class BaseOrder(Base):
     def __init__(self, order):
         super(BaseOrder, self).__init__()

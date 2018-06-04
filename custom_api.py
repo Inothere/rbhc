@@ -157,32 +157,10 @@ class CustomTdApi(TraderApi):
         if not pInvestorPosition:
             # 返回None，表示没有任何持仓
             return
-        if self.api_type == 'close_all':
-            logger.info('isLast={}, {}'.format(bIsLast, pInvestorPosition))
-            if pInvestorPosition.Position > 0 and not pInvestorPosition.LongFrozen and not pInvestorPosition.ShortFrozen:
-                # 持仓且没有未成交
-                close_order = ApiStruct.InputOrder(
-                    BrokerID=self.brokerID,
-                    InvestorID=self.userID,
-                    InstrumentID=pInvestorPosition.InstrumentID,
-                    OrderPriceType=ApiStruct.OPT_LimitPrice,
-                    Direction=ApiStruct.D_Sell if pInvestorPosition.PosiDirection == ApiStruct.PD_Long else ApiStruct.D_Buy,
-                    VolumeTotalOriginal=pInvestorPosition.Position,
-                    TimeCondition=ApiStruct.TC_GFD,
-                    VolumeCondition=ApiStruct.VC_AV,
-                    CombHedgeFlag=ApiStruct.HF_Speculation,
-                    CombOffsetFlag=ApiStruct.OF_CloseToday,
-                    LimitPrice=models.TickData.latest(db, pInvestorPosition.InstrumentID).last_price,
-                    ForceCloseReason=ApiStruct.FCC_NotForceClose,
-                    IsAutoSuspend=False,
-                    UserForceClose=False
-                )
-                self.requestID += 1
-                self.ReqOrderInsert(close_order, self.requestID)
-                logger.info(
-                    'Close remaining orders, instrument: {}, requestID={}'.format(
-                        pInvestorPosition.InstrumentID,
-                        self.requestID))
+        if not self.strategy:
+            return
+        self.strategy.on_rsp_position(pInvestorPosition, pRspInfo, nRequestID, bIsLast)
+
 
     def OnRspQryInvestorPositionDetail(self, pInvestorPositionDetail, pRspInfo, nRequestID, bIsLast):
         if not pInvestorPositionDetail:
@@ -213,15 +191,13 @@ class CustomTdApi(TraderApi):
 
     def OnRtnOrder(self, pOrder):
         if not self.strategy:
-            logger.info(u'OnRtnOrder: {} '.format(pOrder))
+            # logger.info(u'OnRtnOrder: {} '.format(pOrder))
             return
         self.strategy.on_rtn_order(pOrder)
         # logger.info(u'{}: Opening..., direction:{}， offset:{} '.format(pOrder.InstrumentID, pOrder.Direction, pOrder.CombOffsetFlag))
 
     def OnRtnTrade(self, pTrade):
         if not self.strategy:
-            logger.info(
-                u'{}: Deal，direction:{}， offset:{}'.format(pTrade.InstrumentID, pTrade.Direction, pTrade.OffsetFlag))
             return
         self.strategy.on_rtn_trade(pTrade)
         # logger.info(u'{}: Deal，direction:{}， direction:{}'.format(pTrade.InstrumentID, pTrade.Direction, pTrade.OffsetFlag))

@@ -10,7 +10,7 @@ def close():
     login_flag = threading.Event()
     login_flag.clear()
 
-    td_api = CustomTdApi(b'9999', b'118155', b'passwd', instrument_ids, login_flag, api_type='close_all')
+    td_api = CustomTdApi(b'9999', b'118155', b'passwd', login_flag, api_type='close_all')
     td_api.RegisterFront(b'tcp://180.168.146.187:10001')
     td_api.Init()
 
@@ -24,7 +24,6 @@ def close():
         td_api.requestID += 1
         td_api.ReqQryInvestorPosition(qry_position, td_api.requestID)
         logger.info('{}: position query...'.format(id))
-        time.sleep(0.5)
 
     try:
         while True:

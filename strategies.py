@@ -1,7 +1,7 @@
 # coding: utf-8
 from ctp.futures import ApiStruct
 from settings import logger, db
-from models import ObserveStatus, TickData, BaseOrder
+from models import ObserveStatus, TickData, BaseOrder, Position
 import time, datetime
 import threading
 
@@ -53,10 +53,19 @@ class RbhcStrategy(object):
         }  # 撤单线程锁，与self.canceling相结合，用于判断撤单线程唯一性
 
         self.process_th = None
+        self.position_th = None
         self.day_interval = ['09:00:00', '15:00:00']
         self.night_interval = ['21:00:00', '23:00:00']
         self.fmt = '%Y-%m-%d %H:%M:%S'
         self.force_closing = False  # 强平线程启动标志
+        self.positions = {
+            self.rb: list(),
+            self.hc: list()
+        }  # 持仓
+        self.position_ev = {
+            self.rb: threading.Event(),
+            self.hc: threading.Event()
+        }
 
     def inc_order_ref(self, id):
         with self.ref_lock:
@@ -75,6 +84,10 @@ class RbhcStrategy(object):
         self.process_th.daemon = True
         self.process_th.start()
         logger.info(u'开启策略..., session_id: {}, front_id: {}'.format(self.session_id, self.front_id))
+        self.position_th = threading.Thread(target=self._positioner)
+        self.position_th.daemon = True
+        self.position_th.start()
+        logger.info(u'持仓查询开启...')
 
     def _worker(self):
         while True:
@@ -116,6 +129,22 @@ class RbhcStrategy(object):
             # elif self.can_close(self.rb) or self.can_close(self.hc):
             #     # 持仓中，平仓
             #     self.close_all()
+
+    def _positioner(self):
+        while True:
+            # 每隔4秒查询持仓
+            time.sleep(4)
+            for _id in [self.rb, self.hc]:
+                self.positions[_id] = list()  # 清空持仓缓存
+                if self.position_ev[_id].is_set:
+                    self.position_ev[_id].clear()  # 冻结强平线程
+                qry_position = ApiStruct.QryInvestorPosition(
+                    BrokerID=self.td_api.brokerID,
+                    InvestorID=self.td_api.userID,
+                    InstrumentID=_id
+                )
+                self.td_api.requestID += 1
+                self.td_api.ReqQryInvestorPosition(qry_position, self.td_api.requestID)
 
     def calc_type(self, gap=1e-5):
         if self.rate[self.rb] - self.rate[self.hc] > gap:
@@ -224,15 +253,25 @@ class RbhcStrategy(object):
             price=TickData.latest(db, id).last_price
         )
 
+    def on_rsp_position(self, position, rsp, request_id, is_last):
+        _id = position.InstrumentID
+        positions = self.positions[position.InstrumentID]
+        positions.append(Position(position))
+        if is_last:
+            self.position_ev[_id].set()
+            # 多头持仓
+            num_long = 0
+            # 空头持仓
+            num_short = 0
+            for item in positions:
+                if item.IsLong:
+                    num_long += 1
+                else:
+                    num_short += 1
+            logger.info(u'合约: {}, 多仓数量: {}, 空仓数量: {}'.
+                        format(position.InstrumentID, num_long, num_short))
+
     def on_rsp_order_insert(self, order, rsp, request_id, is_last):
-        # order is InputOrder instance
-        # 只有出错了才会调用
-        # if rsp.ErrorID == 22:
-        #     logger.error(
-        #         u'重复报单，requestID={}, input order_ref: {}, rtn order_ref: {}'.format(request_id, self.last_order_info[
-        #             order.InstrumentID].OrderRef, order.OrderRef))
-        #     self._order_insert(id=order.InstrumentID, direction=order.Direction, offset_flag=order.CombOffsetFlag,
-        #                        price=TickData.latest(db, order.InstrumentID).last_price)
         if rsp.ErrorID != 0:
             self.last_resp_info[order.InstrumentID] = BaseOrder(order)
             self.status[order.InstrumentID].status = 'Failed'
@@ -242,9 +281,6 @@ class RbhcStrategy(object):
             else:
                 # 平仓请求失败，返回上一个状态
                 logger.error(u'{}: 平仓请求失败，原因: {}'.format(order.InstrumentID, rsp.ErrorMsg.decode('gb2312')))
-            # 继续发送委托单
-            # self._order_insert(id=order.InstrumentID, direction=order.Direction, offset_flag=order.CombOffsetFlag,
-            #                    price=TickData.latest(db, order.InstrumentID).last_price)
 
     def on_rsp_order_action(self, action, rsp, request_id, is_last):
         if rsp.ErrorID != 0:
@@ -258,19 +294,6 @@ class RbhcStrategy(object):
             logger.info(u'{}: 撤单请求已接受，请等待结果'.format(action.InstrumentID))
 
     def on_rtn_trade(self, trade):
-        # if trade.InstrumentID in [self.rb, self.hc]:
-        #     # self.order_refs[trade.InstrumentID] = trade.OrderRef  # 记录当前报单引用
-        #     with self.status_lock:
-        #         if trade.OffsetFlag == ApiStruct.OF_Open:
-        #             # 开仓成交，设置状态
-        #             self.status[trade.InstrumentID].status = 'InPosition'
-        #             # 设置开仓方向
-        #             self.direction[trade.InstrumentID] = trade.Direction
-        #         else:
-        #             # 平仓成交，设置状态
-        #             self.status[trade.InstrumentID].status = 'None'
-        #     logger.info(
-        #         u'{}: Deal..., direction:{}， offset:{} '.format(trade.InstrumentID, trade.Direction, trade.OffsetFlag))
         pass
 
     def on_rtn_order(self, order):
