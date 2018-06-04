@@ -198,8 +198,14 @@ class RbhcStrategy(object):
         if self.open_type == self.last_open_type[id]:
             logger.info(u'{}: 不能平仓，原因：与开仓时符号相同'.format(id))
             return False
+        if not (self.status[id].status == 'Traded' and self.last_resp_info[id].CombOffsetFlag == ApiStruct.OF_Open):
+            logger.info(u'{}: 不能平仓，status={}, last_comb_offset={}'.
+                        format(id, self.status[id].status, self.last_resp_info[id].CombOffsetFlag))
         # 开仓交易成交，才能平仓
-        return self.status[id].status == 'Traded' and self.last_resp_info[id].CombOffsetFlag == ApiStruct.OF_Open
+        return (self.status[id].status == 'Traded' and \
+                        self.last_resp_info[id].CombOffsetFlag == ApiStruct.OF_Open) or \
+                (self.status[id].status == 'Canceled' and \
+                        self.last_resp_info[id].CombOffsetFlag != ApiStruct.OF_Open)
 
     def _open(self, id, direction):
         self.last_open_type[id] = self.open_type  # 记录本次开仓类型
