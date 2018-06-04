@@ -7,10 +7,10 @@ import threading
 
 
 class RbhcStrategy(object):
-    def __init__(self):
+    def __init__(self, rb='rb1810', hc='hc1810'):
         self.td_api = None
-        self.rb = 'rb1810'
-        self.hc = 'hc1810'
+        self.rb = rb
+        self.hc = hc
         self.status = {
             self.rb: ObserveStatus('None').register_event(self.on_status_change, {'id': self.rb}),  # 注册状态改变事件
             self.hc: ObserveStatus('None').register_event(self.on_status_change, {'id': self.hc})  # 注册状态改变事件

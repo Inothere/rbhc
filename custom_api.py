@@ -72,12 +72,11 @@ class MyMdApi(MdApi):
 
 
 class CustomTdApi(TraderApi):
-    def __init__(self, brokerID, userID, password, instrumentIDs, login_flag=None, api_type='normal'):
+    def __init__(self, brokerID, userID, password, login_flag=None, api_type='normal'):
         self.requestID = 0
         self.brokerID = brokerID
         self.userID = userID
         self.password = password
-        self.instrumentIDs = instrumentIDs
         self.Create()
         self.strategy = None
         self.login_flag = login_flag if login_flag else threading.Event()
