@@ -144,6 +144,7 @@ class RbhcStrategy(object):
                     InvestorID=self.td_api.userID,
                     InstrumentID=_id
                 )
+                time.sleep(1)  # 连续查询持仓请求会被拒绝，所以需要有延迟
                 self.td_api.requestID += 1
                 self.td_api.ReqQryInvestorPosition(qry_position, self.td_api.requestID)
 
@@ -156,8 +157,8 @@ class RbhcStrategy(object):
             # 获取平今和平昨报单
             input_orders = position.close_orders_for_limited_price(db)
             for order in input_orders:
-                self.td_api.ReqOrderInsert(order)
-
+                self.td_api.requestID += 1
+                self.td_api.ReqOrderInsert(order, self.td_api.requestID)
 
     def calc_type(self, gap=1e-5):
         if self.rate[self.rb] - self.rate[self.hc] > gap:
@@ -189,10 +190,10 @@ class RbhcStrategy(object):
             '{}-{:0>2}-{:0>2} {}'.format(cur.year, cur.month, cur.day, h),
             self.fmt
         ) for h in self.night_interval]
-        if m_day_interval[1] - cur < datetime.timedelta(minutes=5) and cur > m_day_interval[0]:
+        if cur < m_day_interval[1] and m_day_interval[1] - cur < datetime.timedelta(minutes=5) and cur > m_day_interval[0]:
             # 日盘即将收盘
             b_ret = True
-        elif m_night_interval[1] - cur < datetime.timedelta(minutes=5) and cur > m_night_interval[0]:
+        elif cur < m_night_interval[1] and m_night_interval[1] - cur < datetime.timedelta(minutes=5) and cur > m_night_interval[0]:
             # 夜盘即将收盘
             b_ret = True
         return b_ret
@@ -250,6 +251,7 @@ class RbhcStrategy(object):
         _id = position.InstrumentID
         positions = self.positions[position.InstrumentID]
         positions.append(Position(position))
+        # logger.info(u'{}, {}'.format(position.InstrumentID, position))
         if is_last:
             self.position_ev[_id].set()
             # 多头持仓
@@ -258,9 +260,9 @@ class RbhcStrategy(object):
             num_short = 0
             for item in positions:
                 if item.IsLong:
-                    num_long += 1
+                    num_long += item.Position
                 else:
-                    num_short += 1
+                    num_short += item.Position
             logger.info(u'合约: {}, 多仓数量: {}, 空仓数量: {}'.
                         format(position.InstrumentID, num_long, num_short))
 

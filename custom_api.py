@@ -158,6 +158,12 @@ class CustomTdApi(TraderApi):
             # 返回None，表示没有任何持仓
             return
         if not self.strategy:
+            logger.info(u'id={}, islast={}, ydposition={}, position={}'.format(
+                pInvestorPosition.InstrumentID,
+                bIsLast,
+                pInvestorPosition.YdPosition,
+                pInvestorPosition.Position
+            ))
             return
         self.strategy.on_rsp_position(pInvestorPosition, pRspInfo, nRequestID, bIsLast)
 

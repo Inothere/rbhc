@@ -24,6 +24,7 @@ def close():
         td_api.requestID += 1
         td_api.ReqQryInvestorPosition(qry_position, td_api.requestID)
         logger.info('{}: position query...'.format(id))
+        time.sleep(1)
 
     try:
         while True:
