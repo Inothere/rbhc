@@ -98,7 +98,7 @@ class RbhcStrategy(object):
                 # 启动强平线程
                 if not self.force_closing:
                     self.force_closing = True
-                    self._do_after_seconds(1, self._force_close, ())
+                    self._do_after_seconds(6, self._force_close, ())
                 continue
             else:
                 self.force_closing = False
@@ -158,6 +158,7 @@ class RbhcStrategy(object):
             input_orders = position.close_orders_for_limited_price(db)
             for order in input_orders:
                 self.td_api.requestID += 1
+                logger.info(u'强平请求，id={}, offset={}'.format(order.InstrumentID, order.CombOffsetFlag))
                 self.td_api.ReqOrderInsert(order, self.td_api.requestID)
 
     def calc_type(self, gap=1e-6):

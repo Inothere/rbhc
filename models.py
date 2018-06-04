@@ -130,23 +130,23 @@ class Position(Base):
 
     def close_orders_for_limited_price(self, db):
         orders = list()
-        if self.YdPosition > 0:
-            orders.append(ApiStruct.InputOrder(
-                BrokerID=self.BrokerID,
-                InvestorID=self.InvestorID,
-                InstrumentID=self.InstrumentID,
-                OrderPriceType=ApiStruct.OPT_LimitPrice,
-                Direction=self.CloseDirection,
-                VolumeTotalOriginal=self.YdPosition,
-                TimeCondition=ApiStruct.TC_GFD,
-                VolumeCondition=ApiStruct.VC_AV,
-                CombHedgeFlag=self.HedgeFlag,
-                CombOffsetFlag=ApiStruct.OF_CloseYesterday,
-                LimitPrice=TickData.latest(db, self.InstrumentID).last_price,
-                ForceCloseReason=ApiStruct.FCC_NotForceClose,
-                IsAutoSuspend=False,
-                UserForceClose=False
-            ))
+        # if self.YdPosition > 0:
+        #     orders.append(ApiStruct.InputOrder(
+        #         BrokerID=self.BrokerID,
+        #         InvestorID=self.InvestorID,
+        #         InstrumentID=self.InstrumentID,
+        #         OrderPriceType=ApiStruct.OPT_LimitPrice,
+        #         Direction=self.CloseDirection,
+        #         VolumeTotalOriginal=self.YdPosition,
+        #         TimeCondition=ApiStruct.TC_GFD,
+        #         VolumeCondition=ApiStruct.VC_AV,
+        #         CombHedgeFlag=self.HedgeFlag,
+        #         CombOffsetFlag=ApiStruct.OF_CloseYesterday,
+        #         LimitPrice=TickData.latest(db, self.InstrumentID).last_price,
+        #         ForceCloseReason=ApiStruct.FCC_NotForceClose,
+        #         IsAutoSuspend=False,
+        #         UserForceClose=False
+        #     ))
         if self.Position > 0:
             orders.append(ApiStruct.InputOrder(
                 BrokerID=self.BrokerID,
