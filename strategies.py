@@ -318,7 +318,8 @@ class RbhcStrategy(object):
                 self.status[order.InstrumentID].status = 'Traded'
             elif order.OrderStatus == ApiStruct.OST_Canceled:
                 # 撤单成功
-                logger.info('Canceled, {}'.format(order))
+                logger.info('{}, Canceled, order_ref={}, offset={}'.
+                            format(order.InstrumentID, order.OrderRef, order.CombOffsetFlag))
                 self.status[order.InstrumentID].status = 'Canceled'
                 if order.CombOffsetFlag != ApiStruct.OF_Open:
                     logger.info(u'{}: 平仓单被撤销, 重新发平仓单'.format(order.InstrumentID))
