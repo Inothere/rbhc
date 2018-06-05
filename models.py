@@ -166,6 +166,26 @@ class Position(Base):
             ))
         return orders
 
+    def close_orders_for_any_price(self):
+        orders = list()
+        if self.Position > 0:
+            orders.append(ApiStruct.InputOrder(
+                BrokerID=self.BrokerID,
+                InvestorID=self.InvestorID,
+                InstrumentID=self.InstrumentID,
+                OrderPriceType=ApiStruct.OPT_AnyPrice,
+                Direction=self.CloseDirection,
+                VolumeTotalOriginal=self.Position,
+                TimeCondition=ApiStruct.TC_GFD,
+                VolumeCondition=ApiStruct.VC_AV,
+                CombHedgeFlag=self.HedgeFlag,
+                CombOffsetFlag=ApiStruct.OF_CloseToday,
+                ForceCloseReason=ApiStruct.FCC_NotForceClose,
+                IsAutoSuspend=False,
+                UserForceClose=False
+            ))
+        return orders
+
 
 class BaseOrder(Base):
     def __init__(self, order):

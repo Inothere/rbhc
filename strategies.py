@@ -155,18 +155,18 @@ class RbhcStrategy(object):
         hc_positions = deepcopy(self.positions[self.hc])
         for position in rb_positions + hc_positions:
             # 获取平今和平昨报单
-            input_orders = position.close_orders_for_limited_price(db)
+            input_orders = position.close_orders_for_any_price()
             for order in input_orders:
                 self.td_api.requestID += 1
                 logger.info(u'强平请求，id={}, offset={}'.format(order.InstrumentID, order.CombOffsetFlag))
                 self.td_api.ReqOrderInsert(order, self.td_api.requestID)
 
-    def calc_type(self, gap=1e-6):
+    def calc_type(self, gap=0.0):
         if self.rate[self.rb] - self.rate[self.hc] > gap:
             return '10'
         if self.rate[self.rb] - self.rate[self.hc] < -gap:
             return '01'
-        return '01'
+        return '00'
 
     def calc_rate(self, seconds=59):
         close_time = datetime.datetime.now()
@@ -215,10 +215,10 @@ class RbhcStrategy(object):
         return b_ret
 
     def can_close(self, id):
-        # 增长率相等，不能开仓
-        if self.open_type == '00':
-            logger.info(u'{}: 不能平仓，原因：增长率相等'.format(id))
-            return False
+        # # 增长率相等，不能开仓
+        # if self.open_type == '00':
+        #     logger.info(u'{}: 不能平仓，原因：增长率相等'.format(id))
+        #     return False
         if self.open_type == self.last_open_type[id]:
             logger.info(u'{}: 不能平仓，原因：与开仓时符号相同'.format(id))
             return False
@@ -237,7 +237,7 @@ class RbhcStrategy(object):
             id=id,
             direction=direction,
             offset_flag=ApiStruct.OF_Open,
-            price=TickData.latest(db, id).last_price
+            # price=TickData.latest(db, id).last_price
         )
 
     def _close(self, id, direction):
@@ -245,7 +245,7 @@ class RbhcStrategy(object):
             id=id,
             direction=direction,
             offset_flag=ApiStruct.OF_CloseToday,
-            price=TickData.latest(db, id).last_price
+            # price=TickData.latest(db, id).last_price
         )
 
     def on_rsp_position(self, position, rsp, request_id, is_last):
@@ -355,14 +355,14 @@ class RbhcStrategy(object):
             InvestorID=self.td_api.userID,
             InstrumentID=kwargs.get('id'),
             OrderPriceType=kwargs.get('order_price_type') if kwargs.get(
-                'order_price_type') else ApiStruct.OPT_LimitPrice,
+                'order_price_type') else ApiStruct.OPT_AnyPrice,
             Direction=kwargs.get('direction'),
             VolumeTotalOriginal=kwargs.get('volume') if kwargs.get('volume') else 1,
             TimeCondition=kwargs.get('time_condition') if kwargs.get('time_condition') else ApiStruct.TC_GFD,
             VolumeCondition=kwargs.get('volume_condition') if kwargs.get('volume_condition') else ApiStruct.VC_AV,
             CombHedgeFlag=ApiStruct.HF_Speculation,
             CombOffsetFlag=kwargs.get('offset_flag'),
-            LimitPrice=kwargs.get('price'),
+            # LimitPrice=kwargs.get('price'),
             ForceCloseReason=ApiStruct.FCC_NotForceClose,
             IsAutoSuspend=False,
             UserForceClose=False,
